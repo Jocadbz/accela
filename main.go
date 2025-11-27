@@ -290,27 +290,30 @@ func isWordChar(ch rune) bool {
 }
 
 func (b *Buffer) MoveWordLeft() {
-	line := b.Lines[b.CursorY]
+	runes := []rune(b.Lines[b.CursorY])
 	if b.CursorX == 0 {
 		if b.CursorY > 0 {
 			b.CursorY--
-			b.CursorX = len(b.Lines[b.CursorY])
+			b.CursorX = len([]rune(b.Lines[b.CursorY]))
 		}
 		return
 	}
+	if b.CursorX > len(runes) {
+		b.CursorX = len(runes)
+	}
 	// Skip whitespace/non-word chars going left
-	for b.CursorX > 0 && !isWordChar(rune(line[b.CursorX-1])) {
+	for b.CursorX > 0 && !isWordChar(runes[b.CursorX-1]) {
 		b.CursorX--
 	}
 	// Skip word chars going left
-	for b.CursorX > 0 && isWordChar(rune(line[b.CursorX-1])) {
+	for b.CursorX > 0 && isWordChar(runes[b.CursorX-1]) {
 		b.CursorX--
 	}
 }
 
 func (b *Buffer) MoveWordRight() {
-	line := b.Lines[b.CursorY]
-	if b.CursorX >= len(line) {
+	runes := []rune(b.Lines[b.CursorY])
+	if b.CursorX >= len(runes) {
 		if b.CursorY < len(b.Lines)-1 {
 			b.CursorY++
 			b.CursorX = 0
@@ -318,11 +321,11 @@ func (b *Buffer) MoveWordRight() {
 		return
 	}
 	// Skip word chars going right
-	for b.CursorX < len(line) && isWordChar(rune(line[b.CursorX])) {
+	for b.CursorX < len(runes) && isWordChar(runes[b.CursorX]) {
 		b.CursorX++
 	}
 	// Skip whitespace/non-word chars going right
-	for b.CursorX < len(line) && !isWordChar(rune(line[b.CursorX])) {
+	for b.CursorX < len(runes) && !isWordChar(runes[b.CursorX]) {
 		b.CursorX++
 	}
 }
@@ -430,12 +433,12 @@ func (e *Editor) DrawPane(pane *Pane, active bool) {
 			continue
 		}
 		
-		line := buf.Lines[lineIdx]
+		runes := []rune(buf.Lines[lineIdx])
 		for col := 0; col < pane.Width; col++ {
 			charIdx := buf.OffsetX + col
 			ch := ' '
-			if charIdx < len(line) {
-				ch = rune(line[charIdx])
+			if charIdx < len(runes) {
+				ch = runes[charIdx]
 			}
 			
 			cellStyle := buf.GetStyleAt(lineIdx, charIdx)
@@ -624,8 +627,9 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 		}
 		if buf.CursorY > 0 {
 			buf.CursorY--
-			if buf.CursorX > len(buf.Lines[buf.CursorY]) {
-				buf.CursorX = len(buf.Lines[buf.CursorY])
+			lineLen := len([]rune(buf.Lines[buf.CursorY]))
+			if buf.CursorX > lineLen {
+				buf.CursorX = lineLen
 			}
 		}
 		if selecting {
@@ -645,8 +649,9 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 		}
 		if buf.CursorY < len(buf.Lines)-1 {
 			buf.CursorY++
-			if buf.CursorX > len(buf.Lines[buf.CursorY]) {
-				buf.CursorX = len(buf.Lines[buf.CursorY])
+			lineLen := len([]rune(buf.Lines[buf.CursorY]))
+			if buf.CursorX > lineLen {
+				buf.CursorX = lineLen
 			}
 		}
 		if selecting {
@@ -671,7 +676,7 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 			buf.CursorX--
 		} else if buf.CursorY > 0 {
 			buf.CursorY--
-			buf.CursorX = len(buf.Lines[buf.CursorY])
+			buf.CursorX = len([]rune(buf.Lines[buf.CursorY]))
 		}
 		if selecting || wordJump {
 			buf.Selection.EndLine = buf.CursorY
@@ -689,9 +694,10 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 			buf.Selection.StartLine = buf.CursorY
 			buf.Selection.StartCol = buf.CursorX
 		}
+		lineLen := len([]rune(buf.Lines[buf.CursorY]))
 		if wordJump {
 			buf.MoveWordRight()
-		} else if buf.CursorX < len(buf.Lines[buf.CursorY]) {
+		} else if buf.CursorX < lineLen {
 			buf.CursorX++
 		} else if buf.CursorY < len(buf.Lines)-1 {
 			buf.CursorY++
@@ -709,9 +715,12 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 		if buf.Selection.Active {
 			buf.DeleteSelection()
 		}
-		line := buf.Lines[buf.CursorY]
-		buf.Lines[buf.CursorY] = line[:buf.CursorX]
-		newLine := line[buf.CursorX:]
+		runes := []rune(buf.Lines[buf.CursorY])
+		if buf.CursorX > len(runes) {
+			buf.CursorX = len(runes)
+		}
+		buf.Lines[buf.CursorY] = string(runes[:buf.CursorX])
+		newLine := string(runes[buf.CursorX:])
 		buf.Lines = append(buf.Lines[:buf.CursorY+1], append([]string{newLine}, buf.Lines[buf.CursorY+1:]...)...)
 		buf.CursorY++
 		buf.CursorX = 0
@@ -722,18 +731,18 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 		if buf.Selection.Active {
 			buf.DeleteSelection()
 		} else if buf.CursorX > 0 {
-			line := buf.Lines[buf.CursorY]
-			if buf.CursorX > len(line) {
-				buf.CursorX = len(line)
+			runes := []rune(buf.Lines[buf.CursorY])
+			if buf.CursorX > len(runes) {
+				buf.CursorX = len(runes)
 			}
 			if buf.CursorX > 0 {
-				buf.Lines[buf.CursorY] = line[:buf.CursorX-1] + line[buf.CursorX:]
+				buf.Lines[buf.CursorY] = string(runes[:buf.CursorX-1]) + string(runes[buf.CursorX:])
 				buf.CursorX--
 			}
 		} else if buf.CursorY > 0 {
-			prevLine := buf.Lines[buf.CursorY-1]
-			buf.CursorX = len(prevLine)
-			buf.Lines[buf.CursorY-1] = prevLine + buf.Lines[buf.CursorY]
+			prevRunes := []rune(buf.Lines[buf.CursorY-1])
+			buf.CursorX = len(prevRunes)
+			buf.Lines[buf.CursorY-1] = buf.Lines[buf.CursorY-1] + buf.Lines[buf.CursorY]
 			buf.Lines = append(buf.Lines[:buf.CursorY], buf.Lines[buf.CursorY+1:]...)
 			buf.CursorY--
 		}
@@ -743,12 +752,14 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 	case tcell.KeyDelete:
 		if buf.Selection.Active {
 			buf.DeleteSelection()
-		} else if buf.CursorX < len(buf.Lines[buf.CursorY]) {
-			line := buf.Lines[buf.CursorY]
-			buf.Lines[buf.CursorY] = line[:buf.CursorX] + line[buf.CursorX+1:]
-		} else if buf.CursorY < len(buf.Lines)-1 {
-			buf.Lines[buf.CursorY] = buf.Lines[buf.CursorY] + buf.Lines[buf.CursorY+1]
-			buf.Lines = append(buf.Lines[:buf.CursorY+1], buf.Lines[buf.CursorY+2:]...)
+		} else {
+			runes := []rune(buf.Lines[buf.CursorY])
+			if buf.CursorX < len(runes) {
+				buf.Lines[buf.CursorY] = string(runes[:buf.CursorX]) + string(runes[buf.CursorX+1:])
+			} else if buf.CursorY < len(buf.Lines)-1 {
+				buf.Lines[buf.CursorY] = buf.Lines[buf.CursorY] + buf.Lines[buf.CursorY+1]
+				buf.Lines = append(buf.Lines[:buf.CursorY+1], buf.Lines[buf.CursorY+2:]...)
+			}
 		}
 		buf.MarkDirty()
 		
@@ -772,11 +783,11 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 		if buf.Selection.Active {
 			buf.DeleteSelection()
 		}
-		line := buf.Lines[buf.CursorY]
-		if buf.CursorX > len(line) {
-			buf.CursorX = len(line)
+		runes := []rune(buf.Lines[buf.CursorY])
+		if buf.CursorX > len(runes) {
+			buf.CursorX = len(runes)
 		}
-		buf.Lines[buf.CursorY] = line[:buf.CursorX] + string(ev.Rune()) + line[buf.CursorX:]
+		buf.Lines[buf.CursorY] = string(runes[:buf.CursorX]) + string(ev.Rune()) + string(runes[buf.CursorX:])
 		buf.CursorX++
 		buf.MarkDirty()
 		e.ScrollToCursor(pane)
