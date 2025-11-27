@@ -1,0 +1,28 @@
+accela is an editor I've built because I was bored and because i wanted to do it.
+
+you shouldn't use this (Use vim, it's kinda like this one but better.)
+
+it has basic features and support syntax highligting with https://github.com/alecthomas/chroma (Thankful I didn't had to add it on my own)
+
+Huhhhh yeah that's it.
+
+Keybinds:
+Arrows to move
+Ctrl + Arrows to select
+Ctrl + Alt + Arrows to select (But wrapping words)
+Ctrl + C/V/X to copy/paste/cut (Shares clipboard with system)
+If any text is selected assume all commands are affecting only the selection
+Ctrl + s to save
+Ctrl + e to run commands:
+w to save
+q to quit
+wq to save and quit
+hsplit/vsplit to edit another file side by side - Ctrl + W to change splits
+close to close current split (does nothing if you only having one split
+
+Ctrl + f to search
+Enter to do search
+n for next occurence, N for previous
+Esc to exit search
+
+license is MIT because im too lazy to get the unlicense one
