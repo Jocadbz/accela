@@ -1,4 +1,4 @@
-module neweditor
+module accela
 
 go 1.25.4
 

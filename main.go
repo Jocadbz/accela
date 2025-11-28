@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode"
 
@@ -814,10 +815,88 @@ func (e *Editor) HandleCommandKey(ev *tcell.EventKey) bool {
 			e.CommandMode = false
 		}
 		
+	case tcell.KeyTab:
+		e.TabCompleteCommand()
+		
 	case tcell.KeyRune:
 		e.Command += string(ev.Rune())
 	}
 	return true
+}
+
+func (e *Editor) TabCompleteCommand() {
+	parts := strings.Fields(e.Command)
+	if len(parts) == 0 {
+		return
+	}
+	
+	// Complete command name
+	if len(parts) == 1 && !strings.HasSuffix(e.Command, " ") {
+		commands := []string{"quit", "write", "wq", "edit", "hsplit", "vsplit", "close"}
+		var matches []string
+		for _, cmd := range commands {
+			if strings.HasPrefix(cmd, parts[0]) {
+				matches = append(matches, cmd)
+			}
+		}
+		if len(matches) == 1 {
+			e.Command = matches[0]
+		}
+		return
+	}
+	
+	// Complete filename for e, hsplit, vsplit
+	cmd := parts[0]
+	if cmd != "e" && cmd != "edit" && cmd != "hsplit" && cmd != "vsplit" {
+		return
+	}
+	
+	var prefix string
+	if len(parts) > 1 {
+		prefix = parts[len(parts)-1]
+	} else {
+		prefix = ""
+	}
+	
+	dir := filepath.Dir(prefix)
+	if dir == "" || dir == "." {
+		dir = "."
+	}
+	base := filepath.Base(prefix)
+	if prefix == "" || strings.HasSuffix(prefix, "/") {
+		if prefix != "" {
+			dir = prefix
+		}
+		base = ""
+	}
+	
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	
+	var matches []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, base) {
+			fullPath := filepath.Join(dir, name)
+			if dir == "." {
+				fullPath = name
+			}
+			if entry.IsDir() {
+				fullPath += "/"
+			}
+			matches = append(matches, fullPath)
+		}
+	}
+	
+	if len(matches) == 1 {
+		if len(parts) > 1 {
+			e.Command = cmd + " " + matches[0]
+		} else {
+			e.Command = cmd + " " + matches[0]
+		}
+	}
 }
 
 func (e *Editor) HandleSearchKey(ev *tcell.EventKey) bool {
