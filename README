@@ -4,6 +4,8 @@ you shouldn't use this (Use vim, it's kinda like this one but better.)
 
 it has basic features and support syntax highligting with https://github.com/alecthomas/chroma (Thankful I didn't had to add it on my own)
 
+xclip/xsel or wl-clipboard is required to use copy and paste
+
 Huhhhh yeah that's it.
 
 Keybinds:
