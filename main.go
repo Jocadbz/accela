@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -934,7 +935,7 @@ func (e *Editor) TabCompleteCommand() {
 	
 	// Complete command name
 	if len(parts) == 1 && !strings.HasSuffix(e.Command, " ") {
-		commands := []string{"quit", "write", "wq", "edit", "hsplit", "vsplit", "close"}
+		commands := []string{"quit", "write", "wq", "edit", "hsplit", "vsplit", "close", "goto"}
 		var matches []string
 		for _, cmd := range commands {
 			if strings.HasPrefix(cmd, parts[0]) {
@@ -1155,6 +1156,29 @@ func (e *Editor) ExecuteCommand() {
 			}
 			e.SplitType = SplitNone
 		}
+
+	case "goto", "g":
+		if len(args) < 1 {
+			e.StatusMsg = "Usage: goto <line>"
+			return
+		}
+		lineNum, err := strconv.Atoi(args[0])
+		if err != nil {
+			e.StatusMsg = "Invalid line number"
+			return
+		}
+		buf := e.CurrentBuffer()
+		pane := e.CurrentPane()
+		lineNum-- // Convert to 0-indexed
+		if lineNum < 0 {
+			lineNum = 0
+		} else if lineNum >= len(buf.Lines) {
+			lineNum = len(buf.Lines) - 1
+		}
+		buf.CursorY = lineNum
+		buf.CursorX = 0
+		e.ScrollToCursor(pane)
+		e.StatusMsg = fmt.Sprintf("Line %d", lineNum+1)
 		
 	default:
 		e.StatusMsg = fmt.Sprintf("Unknown command: %s", cmd)

@@ -20,6 +20,7 @@ q to quit
 wq to save and quit
 hsplit/vsplit to edit another file side by side - Ctrl + W to change splits
 close to close current split (does nothing if you only having one split
+goto (or g) + line number to jump to that specific line
 
 Ctrl + f to search
 Enter to do search
