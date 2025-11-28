@@ -27,17 +27,19 @@ type TokenInfo struct {
 }
 
 type Buffer struct {
-	Lines      []string
-	Filename   string
-	CursorX    int
-	CursorY    int
-	OffsetX    int
-	OffsetY    int
-	Selection  Selection
-	Lexer      chroma.Lexer
-	Style      *chroma.Style
-	TokenCache [][]TokenInfo
-	Dirty      bool
+	Lines          []string
+	Filename       string
+	CursorX        int
+	CursorY        int
+	OffsetX        int
+	OffsetY        int
+	Selection      Selection
+	Lexer          chroma.Lexer
+	Style          *chroma.Style
+	TokenCache     [][]TokenInfo
+	Dirty          bool
+	DirtyLineStart int
+	DirtyLineEnd   int
 }
 
 type SplitType int
@@ -77,8 +79,10 @@ type Editor struct {
 
 func NewBuffer() *Buffer {
 	return &Buffer{
-		Lines: []string{""},
-		Style: styles.Get("monokai"),
+		Lines:          []string{""},
+		Style:          styles.Get("monokai"),
+		DirtyLineStart: -1,
+		DirtyLineEnd:   -1,
 	}
 }
 
@@ -103,24 +107,42 @@ func chromaToTcell(c chroma.Colour) tcell.Color {
 }
 
 func (b *Buffer) UpdateTokenCache() {
+	b.UpdateTokenCacheRange(0, len(b.Lines)-1)
+}
+
+func (b *Buffer) UpdateTokenCacheRange(startLine, endLine int) {
 	if b.Lexer == nil || b.Style == nil {
 		return
 	}
-	
-	content := strings.Join(b.Lines, "\n")
+
+	// Expand range to handle multi-line tokens (strings, comments)
+	// Look back up to 50 lines for safety
+	contextLines := 50
+	startLine = max(0, startLine-contextLines)
+	endLine = min(len(b.Lines)-1, endLine+contextLines)
+
+	// Ensure TokenCache has enough capacity
+	if len(b.TokenCache) != len(b.Lines) {
+		newCache := make([][]TokenInfo, len(b.Lines))
+		copy(newCache, b.TokenCache)
+		b.TokenCache = newCache
+	}
+
+	// Clear tokens for lines we're about to re-tokenize
+	for i := startLine; i <= endLine && i < len(b.TokenCache); i++ {
+		b.TokenCache[i] = []TokenInfo{}
+	}
+
+	// Tokenize only the relevant portion with context
+	content := strings.Join(b.Lines[startLine:endLine+1], "\n")
 	iterator, err := b.Lexer.Tokenise(nil, content)
 	if err != nil {
 		return
 	}
-	
-	b.TokenCache = make([][]TokenInfo, len(b.Lines))
-	for i := range b.TokenCache {
-		b.TokenCache[i] = []TokenInfo{}
-	}
-	
-	lineNum := 0
+
+	lineNum := startLine
 	col := 0
-	
+
 	for _, token := range iterator.Tokens() {
 		entry := b.Style.Get(token.Type)
 		fg := chromaToTcell(entry.Colour)
@@ -131,7 +153,7 @@ func (b *Buffer) UpdateTokenCache() {
 		if entry.Italic == chroma.Yes {
 			style = style.Italic(true)
 		}
-		
+
 		tokenLines := strings.Split(token.Value, "\n")
 		for i, part := range tokenLines {
 			if i > 0 {
@@ -190,13 +212,25 @@ func (b *Buffer) SetFilename(filename string) {
 }
 
 func (b *Buffer) MarkDirty() {
+	b.MarkDirtyLines(b.CursorY, b.CursorY)
+}
+
+func (b *Buffer) MarkDirtyLines(start, end int) {
 	b.Dirty = true
+	if b.DirtyLineStart < 0 || start < b.DirtyLineStart {
+		b.DirtyLineStart = start
+	}
+	if end > b.DirtyLineEnd {
+		b.DirtyLineEnd = end
+	}
 }
 
 func (b *Buffer) RefreshIfDirty() {
-	if b.Dirty {
-		b.UpdateTokenCache()
+	if b.Dirty && b.DirtyLineStart >= 0 {
+		b.UpdateTokenCacheRange(b.DirtyLineStart, b.DirtyLineEnd)
 		b.Dirty = false
+		b.DirtyLineStart = -1
+		b.DirtyLineEnd = -1
 	}
 }
 
@@ -283,7 +317,7 @@ func (b *Buffer) DeleteSelection() {
 	b.CursorX = startCol
 	b.CursorY = startLine
 	b.Selection.Active = false
-	b.MarkDirty()
+	b.MarkDirtyLines(startLine, len(b.Lines)-1)
 }
 
 func isWordChar(ch rune) bool {
@@ -789,9 +823,9 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 		buf.Lines[buf.CursorY] = string(runes[:buf.CursorX])
 		newLine := string(runes[buf.CursorX:])
 		buf.Lines = append(buf.Lines[:buf.CursorY+1], append([]string{newLine}, buf.Lines[buf.CursorY+1:]...)...)
+		buf.MarkDirtyLines(buf.CursorY, len(buf.Lines)-1)
 		buf.CursorY++
 		buf.CursorX = 0
-		buf.MarkDirty()
 		e.ScrollToCursor(pane)
 		
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
@@ -805,6 +839,7 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 			if buf.CursorX > 0 {
 				buf.Lines[buf.CursorY] = string(runes[:buf.CursorX-1]) + string(runes[buf.CursorX:])
 				buf.CursorX--
+				buf.MarkDirty()
 			}
 		} else if buf.CursorY > 0 {
 			prevRunes := []rune(buf.Lines[buf.CursorY-1])
@@ -812,8 +847,8 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 			buf.Lines[buf.CursorY-1] = buf.Lines[buf.CursorY-1] + buf.Lines[buf.CursorY]
 			buf.Lines = append(buf.Lines[:buf.CursorY], buf.Lines[buf.CursorY+1:]...)
 			buf.CursorY--
+			buf.MarkDirtyLines(buf.CursorY, len(buf.Lines)-1)
 		}
-		buf.MarkDirty()
 		e.ScrollToCursor(pane)
 		
 	case tcell.KeyDelete:
@@ -823,12 +858,13 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 			runes := []rune(buf.Lines[buf.CursorY])
 			if buf.CursorX < len(runes) {
 				buf.Lines[buf.CursorY] = string(runes[:buf.CursorX]) + string(runes[buf.CursorX+1:])
+				buf.MarkDirty()
 			} else if buf.CursorY < len(buf.Lines)-1 {
 				buf.Lines[buf.CursorY] = buf.Lines[buf.CursorY] + buf.Lines[buf.CursorY+1]
 				buf.Lines = append(buf.Lines[:buf.CursorY+1], buf.Lines[buf.CursorY+2:]...)
+				buf.MarkDirtyLines(buf.CursorY, len(buf.Lines)-1)
 			}
 		}
-		buf.MarkDirty()
 		
 	case tcell.KeyTab:
 		if buf.Selection.Active {
@@ -1128,11 +1164,13 @@ func (e *Editor) ExecuteCommand() {
 func (e *Editor) InsertText(text string) {
 	buf := e.CurrentBuffer()
 	lines := strings.Split(text, "\n")
+	startLine := buf.CursorY
 	
 	if len(lines) == 1 {
 		line := buf.Lines[buf.CursorY]
 		buf.Lines[buf.CursorY] = line[:buf.CursorX] + text + line[buf.CursorX:]
 		buf.CursorX += len(text)
+		buf.MarkDirty()
 	} else {
 		currentLine := buf.Lines[buf.CursorY]
 		beforeCursor := currentLine[:buf.CursorX]
@@ -1152,8 +1190,8 @@ func (e *Editor) InsertText(text string) {
 		buf.Lines = newLines
 		buf.CursorY += len(lines) - 1
 		buf.CursorX = len(lines[len(lines)-1])
+		buf.MarkDirtyLines(startLine, len(buf.Lines)-1)
 	}
-	buf.MarkDirty()
 }
 
 func (e *Editor) ScrollToCursor(pane *Pane) {
