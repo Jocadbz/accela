@@ -729,13 +729,14 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 		
 	case tcell.KeyLeft:
 		selecting := ev.Modifiers()&tcell.ModCtrl != 0
-		wordJump := ev.Modifiers()&(tcell.ModCtrl|tcell.ModAlt) == (tcell.ModCtrl|tcell.ModAlt)
-		if (selecting || wordJump) && !buf.Selection.Active {
+		wordJumpSelect := ev.Modifiers()&(tcell.ModCtrl|tcell.ModAlt) == (tcell.ModCtrl|tcell.ModAlt)
+		wordJumpNoSelect := ev.Modifiers() == tcell.ModAlt
+		if (selecting || wordJumpSelect) && !buf.Selection.Active {
 			buf.Selection.Active = true
 			buf.Selection.StartLine = buf.CursorY
 			buf.Selection.StartCol = buf.CursorX
 		}
-		if wordJump {
+		if wordJumpSelect || wordJumpNoSelect {
 			buf.MoveWordLeft()
 		} else if buf.CursorX > 0 {
 			buf.CursorX--
@@ -743,7 +744,7 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 			buf.CursorY--
 			buf.CursorX = len([]rune(buf.Lines[buf.CursorY]))
 		}
-		if selecting || wordJump {
+		if selecting || wordJumpSelect {
 			buf.Selection.EndLine = buf.CursorY
 			buf.Selection.EndCol = buf.CursorX
 		} else {
@@ -753,14 +754,15 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 		
 	case tcell.KeyRight:
 		selecting := ev.Modifiers()&tcell.ModCtrl != 0
-		wordJump := ev.Modifiers()&(tcell.ModCtrl|tcell.ModAlt) == (tcell.ModCtrl|tcell.ModAlt)
-		if (selecting || wordJump) && !buf.Selection.Active {
+		wordJumpSelect := ev.Modifiers()&(tcell.ModCtrl|tcell.ModAlt) == (tcell.ModCtrl|tcell.ModAlt)
+		wordJumpNoSelect := ev.Modifiers() == tcell.ModAlt
+		if (selecting || wordJumpSelect) && !buf.Selection.Active {
 			buf.Selection.Active = true
 			buf.Selection.StartLine = buf.CursorY
 			buf.Selection.StartCol = buf.CursorX
 		}
 		lineLen := len([]rune(buf.Lines[buf.CursorY]))
-		if wordJump {
+		if wordJumpSelect || wordJumpNoSelect {
 			buf.MoveWordRight()
 		} else if buf.CursorX < lineLen {
 			buf.CursorX++
@@ -768,7 +770,7 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 			buf.CursorY++
 			buf.CursorX = 0
 		}
-		if selecting || wordJump {
+		if selecting || wordJumpSelect {
 			buf.Selection.EndLine = buf.CursorY
 			buf.Selection.EndCol = buf.CursorX
 		} else {
