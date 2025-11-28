@@ -1127,25 +1127,35 @@ func (e *Editor) ExecuteCommand() {
 	case "hsplit":
 		if len(e.Panes) < 2 {
 			newBuf := NewBuffer()
-			if e.CurrentBuffer().Filename != "" {
-				newBuf.LoadFile(e.CurrentBuffer().Filename)
+			if len(args) > 0 {
+				if err := newBuf.LoadFile(args[0]); err != nil {
+					e.StatusMsg = fmt.Sprintf("Error: %v", err)
+					return
+				}
+				e.StatusMsg = fmt.Sprintf("Horizontal split: %s", args[0])
+			} else {
+				e.StatusMsg = "Horizontal split"
 			}
 			newPane := &Pane{Buffer: newBuf}
 			e.Panes = append(e.Panes, newPane)
 			e.SplitType = SplitHorizontal
-			e.StatusMsg = "Horizontal split"
 		}
 		
 	case "vsplit":
 		if len(e.Panes) < 2 {
 			newBuf := NewBuffer()
-			if e.CurrentBuffer().Filename != "" {
-				newBuf.LoadFile(e.CurrentBuffer().Filename)
+			if len(args) > 0 {
+				if err := newBuf.LoadFile(args[0]); err != nil {
+					e.StatusMsg = fmt.Sprintf("Error: %v", err)
+					return
+				}
+				e.StatusMsg = fmt.Sprintf("Vertical split: %s", args[0])
+			} else {
+				e.StatusMsg = "Vertical split"
 			}
 			newPane := &Pane{Buffer: newBuf}
 			e.Panes = append(e.Panes, newPane)
 			e.SplitType = SplitVertical
-			e.StatusMsg = "Vertical split"
 		}
 		
 	case "close":
