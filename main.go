@@ -424,6 +424,7 @@ func (e *Editor) DrawPane(pane *Pane, active bool) {
 	buf.RefreshIfDirty()
 	selStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite)
 	searchStyle := tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
+	const tabWidth = 4
 	
 	for row := 0; row < pane.Height; row++ {
 		lineIdx := buf.OffsetY + row
@@ -435,31 +436,87 @@ func (e *Editor) DrawPane(pane *Pane, active bool) {
 		}
 		
 		runes := []rune(buf.Lines[lineIdx])
-		for col := 0; col < pane.Width; col++ {
-			charIdx := buf.OffsetX + col
-			ch := ' '
-			if charIdx < len(runes) {
-				ch = runes[charIdx]
+		screenCol := 0
+		charIdx := 0
+		
+		// Skip characters until we reach the horizontal offset
+		visualCol := 0
+		for charIdx < len(runes) && visualCol < buf.OffsetX {
+			if runes[charIdx] == '\t' {
+				visualCol += tabWidth - (visualCol % tabWidth)
+			} else {
+				visualCol++
+			}
+			charIdx++
+		}
+		
+		// If we overshot due to a tab, fill with spaces
+		if visualCol > buf.OffsetX {
+			for screenCol < visualCol-buf.OffsetX && screenCol < pane.Width {
+				cellStyle := buf.GetStyleAt(lineIdx, charIdx-1)
+				if buf.Selection.Active && e.isSelected(buf, lineIdx, charIdx-1) {
+					cellStyle = selStyle
+				}
+				e.Screen.SetContent(pane.X+screenCol, pane.Y+row, ' ', nil, cellStyle)
+				screenCol++
+			}
+		}
+		
+		// Render visible characters
+		for screenCol < pane.Width {
+			if charIdx >= len(runes) {
+				e.Screen.SetContent(pane.X+screenCol, pane.Y+row, ' ', nil, tcell.StyleDefault)
+				screenCol++
+				continue
 			}
 			
+			ch := runes[charIdx]
 			cellStyle := buf.GetStyleAt(lineIdx, charIdx)
 			if buf.Selection.Active && e.isSelected(buf, lineIdx, charIdx) {
 				cellStyle = selStyle
 			} else if e.isSearchMatch(lineIdx, charIdx) {
 				cellStyle = searchStyle
 			}
-			e.Screen.SetContent(pane.X+col, pane.Y+row, ch, nil, cellStyle)
+			
+			if ch == '\t' {
+				tabSpaces := tabWidth - ((buf.OffsetX + screenCol) % tabWidth)
+				for i := 0; i < tabSpaces && screenCol < pane.Width; i++ {
+					e.Screen.SetContent(pane.X+screenCol, pane.Y+row, ' ', nil, cellStyle)
+					screenCol++
+				}
+			} else {
+				e.Screen.SetContent(pane.X+screenCol, pane.Y+row, ch, nil, cellStyle)
+				screenCol++
+			}
+			charIdx++
 		}
 	}
 	
 	if active {
-		cursorScreenX := pane.X + buf.CursorX - buf.OffsetX
+		cursorScreenX := pane.X + e.charToVisualCol(buf, buf.CursorY, buf.CursorX) - buf.OffsetX
 		cursorScreenY := pane.Y + buf.CursorY - buf.OffsetY
 		if cursorScreenX >= pane.X && cursorScreenX < pane.X+pane.Width &&
 			cursorScreenY >= pane.Y && cursorScreenY < pane.Y+pane.Height {
 			e.Screen.ShowCursor(cursorScreenX, cursorScreenY)
 		}
 	}
+}
+
+func (e *Editor) charToVisualCol(buf *Buffer, line, charCol int) int {
+	const tabWidth = 4
+	if line >= len(buf.Lines) {
+		return charCol
+	}
+	runes := []rune(buf.Lines[line])
+	visualCol := 0
+	for i := 0; i < charCol && i < len(runes); i++ {
+		if runes[i] == '\t' {
+			visualCol += tabWidth - (visualCol % tabWidth)
+		} else {
+			visualCol++
+		}
+	}
+	return visualCol
 }
 
 func (e *Editor) isSelected(buf *Buffer, line, col int) bool {
@@ -571,6 +628,9 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 	switch ev.Key() {
 	case tcell.KeyEscape:
 		buf.Selection.Active = false
+		e.SearchMatches = nil
+		e.SearchQuery = ""
+		e.StatusMsg = ""
 		
 	case tcell.KeyCtrlW:
 		if len(e.Panes) > 1 {
@@ -772,7 +832,7 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 		if buf.Selection.Active {
 			buf.DeleteSelection()
 		}
-		e.InsertText("    ")
+		e.InsertText("\t")
 		
 	case tcell.KeyRune:
 		if ev.Rune() == 'n' && len(e.SearchMatches) > 0 {
@@ -1103,10 +1163,11 @@ func (e *Editor) ScrollToCursor(pane *Pane) {
 		buf.OffsetY = buf.CursorY - pane.Height + 1
 	}
 	
-	if buf.CursorX < buf.OffsetX {
-		buf.OffsetX = buf.CursorX
-	} else if buf.CursorX >= buf.OffsetX+pane.Width {
-		buf.OffsetX = buf.CursorX - pane.Width + 1
+	visualX := e.charToVisualCol(buf, buf.CursorY, buf.CursorX)
+	if visualX < buf.OffsetX {
+		buf.OffsetX = visualX
+	} else if visualX >= buf.OffsetX+pane.Width {
+		buf.OffsetX = visualX - pane.Width + 1
 	}
 }
 
