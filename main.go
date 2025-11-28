@@ -602,6 +602,10 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 			e.StatusMsg = "Cut to clipboard"
 		}
 		
+	case tcell.KeyCtrlQ:
+		e.Screen.Fini()
+		os.Exit(0)
+		
 	case tcell.KeyCtrlS:
 		if err := buf.SaveFile(); err != nil {
 			e.StatusMsg = fmt.Sprintf("Error: %v", err)
