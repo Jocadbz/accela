@@ -29,4 +29,6 @@ Enter to do search
 n for next occurence, N for previous
 Esc to exit search
 
+Binaries are distributed either via my personal arch repo (https://repo.jocadbz.xyz) or on https://nyet.su/ (Thanks to @1casie for providing it!)
+
 license is MIT because im too lazy to get the unlicense one
