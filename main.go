@@ -11,8 +11,8 @@ import (
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/atotto/clipboard"
 	"github.com/gdamore/tcell/v2"
-	"golang.design/x/clipboard"
 )
 
 type Selection struct {
@@ -375,12 +375,6 @@ func NewEditor() (*Editor, error) {
 		return nil, err
 	}
 	
-	err = clipboard.Init()
-	if err != nil {
-		screen.Fini()
-		return nil, fmt.Errorf("clipboard init failed: %v", err)
-	}
-	
 	w, h := screen.Size()
 	buf := NewBuffer()
 	pane := &Pane{
@@ -675,12 +669,12 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 	case tcell.KeyCtrlC:
 		if buf.Selection.Active {
 			text := buf.GetSelectedText()
-			clipboard.Write(clipboard.FmtText, []byte(text))
+			clipboard.WriteAll(text)
 			e.StatusMsg = "Copied to clipboard"
 		}
 		
 	case tcell.KeyCtrlV:
-		text := string(clipboard.Read(clipboard.FmtText))
+		text, _ := clipboard.ReadAll()
 		if text != "" {
 			if buf.Selection.Active {
 				buf.DeleteSelection()
@@ -692,7 +686,7 @@ func (e *Editor) HandleKey(ev *tcell.EventKey) bool {
 	case tcell.KeyCtrlX:
 		if buf.Selection.Active {
 			text := buf.GetSelectedText()
-			clipboard.Write(clipboard.FmtText, []byte(text))
+			clipboard.WriteAll(text)
 			buf.DeleteSelection()
 			e.StatusMsg = "Cut to clipboard"
 		}
