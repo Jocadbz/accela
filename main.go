@@ -52,10 +52,11 @@ const (
 )
 
 type Pane struct {
-	Buffer *Buffer
-	X, Y   int
-	Width  int
-	Height int
+	Buffer     *Buffer
+	X, Y       int
+	Width      int
+	Height     int
+	GutterWidth int
 }
 
 type SearchMatch struct {
@@ -453,21 +454,38 @@ func (e *Editor) DrawPane(pane *Pane, active bool) {
 	buf.RefreshIfDirty()
 	selStyle := tcell.StyleDefault.Background(tcell.ColorBlue).Foreground(tcell.ColorWhite)
 	searchStyle := tcell.StyleDefault.Background(tcell.ColorYellow).Foreground(tcell.ColorBlack)
+	gutterStyle := tcell.StyleDefault.Foreground(tcell.ColorDarkGray)
 	const tabWidth = 4
-	
+
+	// Calculate gutter width based on total line count
+	lineCount := len(buf.Lines)
+	gutterWidth := len(fmt.Sprintf("%d", lineCount)) + 1 // +1 for spacing
+	if gutterWidth < 3 {
+		gutterWidth = 3
+	}
+	pane.GutterWidth = gutterWidth
+	textAreaWidth := pane.Width - gutterWidth
+
 	for row := 0; row < pane.Height; row++ {
 		lineIdx := buf.OffsetY + row
 		if lineIdx >= len(buf.Lines) {
+			// Draw empty gutter and text area
 			for col := 0; col < pane.Width; col++ {
 				e.Screen.SetContent(pane.X+col, pane.Y+row, ' ', nil, tcell.StyleDefault)
 			}
 			continue
 		}
-		
+
+		// Draw line number in gutter
+		lineNumStr := fmt.Sprintf("%*d ", gutterWidth-1, lineIdx+1)
+		for i, ch := range lineNumStr {
+			e.Screen.SetContent(pane.X+i, pane.Y+row, ch, nil, gutterStyle)
+		}
+
 		runes := []rune(buf.Lines[lineIdx])
 		screenCol := 0
 		charIdx := 0
-		
+
 		// Skip characters until we reach the horizontal offset
 		visualCol := 0
 		for charIdx < len(runes) && visualCol < buf.OffsetX {
@@ -478,27 +496,27 @@ func (e *Editor) DrawPane(pane *Pane, active bool) {
 			}
 			charIdx++
 		}
-		
+
 		// If we overshot due to a tab, fill with spaces
 		if visualCol > buf.OffsetX {
-			for screenCol < visualCol-buf.OffsetX && screenCol < pane.Width {
+			for screenCol < visualCol-buf.OffsetX && screenCol < textAreaWidth {
 				cellStyle := buf.GetStyleAt(lineIdx, charIdx-1)
 				if buf.Selection.Active && e.isSelected(buf, lineIdx, charIdx-1) {
 					cellStyle = selStyle
 				}
-				e.Screen.SetContent(pane.X+screenCol, pane.Y+row, ' ', nil, cellStyle)
+				e.Screen.SetContent(pane.X+gutterWidth+screenCol, pane.Y+row, ' ', nil, cellStyle)
 				screenCol++
 			}
 		}
-		
+
 		// Render visible characters
-		for screenCol < pane.Width {
+		for screenCol < textAreaWidth {
 			if charIdx >= len(runes) {
-				e.Screen.SetContent(pane.X+screenCol, pane.Y+row, ' ', nil, tcell.StyleDefault)
+				e.Screen.SetContent(pane.X+gutterWidth+screenCol, pane.Y+row, ' ', nil, tcell.StyleDefault)
 				screenCol++
 				continue
 			}
-			
+
 			ch := runes[charIdx]
 			cellStyle := buf.GetStyleAt(lineIdx, charIdx)
 			if buf.Selection.Active && e.isSelected(buf, lineIdx, charIdx) {
@@ -506,25 +524,25 @@ func (e *Editor) DrawPane(pane *Pane, active bool) {
 			} else if e.isSearchMatch(lineIdx, charIdx) {
 				cellStyle = searchStyle
 			}
-			
+
 			if ch == '\t' {
 				tabSpaces := tabWidth - ((buf.OffsetX + screenCol) % tabWidth)
-				for i := 0; i < tabSpaces && screenCol < pane.Width; i++ {
-					e.Screen.SetContent(pane.X+screenCol, pane.Y+row, ' ', nil, cellStyle)
+				for i := 0; i < tabSpaces && screenCol < textAreaWidth; i++ {
+					e.Screen.SetContent(pane.X+gutterWidth+screenCol, pane.Y+row, ' ', nil, cellStyle)
 					screenCol++
 				}
 			} else {
-				e.Screen.SetContent(pane.X+screenCol, pane.Y+row, ch, nil, cellStyle)
+				e.Screen.SetContent(pane.X+gutterWidth+screenCol, pane.Y+row, ch, nil, cellStyle)
 				screenCol++
 			}
 			charIdx++
 		}
 	}
-	
+
 	if active {
-		cursorScreenX := pane.X + e.charToVisualCol(buf, buf.CursorY, buf.CursorX) - buf.OffsetX
+		cursorScreenX := pane.X + gutterWidth + e.charToVisualCol(buf, buf.CursorY, buf.CursorX) - buf.OffsetX
 		cursorScreenY := pane.Y + buf.CursorY - buf.OffsetY
-		if cursorScreenX >= pane.X && cursorScreenX < pane.X+pane.Width &&
+		if cursorScreenX >= pane.X+gutterWidth && cursorScreenX < pane.X+pane.Width &&
 			cursorScreenY >= pane.Y && cursorScreenY < pane.Y+pane.Height {
 			e.Screen.ShowCursor(cursorScreenX, cursorScreenY)
 		}
@@ -1224,18 +1242,22 @@ func (e *Editor) InsertText(text string) {
 
 func (e *Editor) ScrollToCursor(pane *Pane) {
 	buf := pane.Buffer
-	
+
 	if buf.CursorY < buf.OffsetY {
 		buf.OffsetY = buf.CursorY
 	} else if buf.CursorY >= buf.OffsetY+pane.Height {
 		buf.OffsetY = buf.CursorY - pane.Height + 1
 	}
-	
+
+	textAreaWidth := pane.Width - pane.GutterWidth
+	if textAreaWidth < 1 {
+		textAreaWidth = 1
+	}
 	visualX := e.charToVisualCol(buf, buf.CursorY, buf.CursorX)
 	if visualX < buf.OffsetX {
 		buf.OffsetX = visualX
-	} else if visualX >= buf.OffsetX+pane.Width {
-		buf.OffsetX = visualX - pane.Width + 1
+	} else if visualX >= buf.OffsetX+textAreaWidth {
+		buf.OffsetX = visualX - textAreaWidth + 1
 	}
 }
 
